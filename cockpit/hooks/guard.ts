@@ -224,18 +224,20 @@ function gitWords(words: string[]): string[][] {
   let i = 0
   while (i < words.length && (ASSIGNMENT.test(words[i] ?? '') || SHELL_WORDS.has(words[i] ?? ''))) i++
   if (isGit(words[i] ?? '')) return [words.slice(i)]
-  if (!WRAPPERS.has(words[i] ?? '')) return []
+  // /usr/bin/timeout and TIMEOUT are the same wrapper.
+  if (!WRAPPERS.has((words[i] ?? '').toLowerCase().split('/').pop() ?? '')) return []
   const found: string[][] = []
   for (let j = i + 1; j < words.length; j++) {
     // Split the word the way env -S does (quotes dropped, \_ \t \n as spaces) and take every git in it; a git that
     // is only mentioned inside another command's argument is refused too, which errs on the safe side.
-    const text = (words[j] ?? '').replace(/\\[_tn]/g, ' ').replace(/['"\\]/g, '')
-    const parts = text
-      .split(/\s+/)
-      .filter(Boolean)
-      .map(p => p.replace(/^-[A-Za-z]*S/, '').replace(/^--[A-Za-z-]+=/, ''))
-    parts.forEach((p, k) => {
-      if (isGit(p)) found.push([p, ...parts.slice(k + 1), ...words.slice(j + 1)])
+    const word = words[j] ?? ''
+    // env -S expands ${NAME}: what it becomes is unknown here, so the check fails closed (refused if git is named).
+    if (word.includes('${')) throw new Error('a wrapper word with ${...} cannot be checked')
+    const parts = word.replace(/\\[_tn]/g, ' ').replace(/['"\\]/g, '').split(/\s+/).filter(Boolean)
+    parts.forEach((part, k) => {
+      // Only the word git sits in may carry the wrapper's option (env -Sgit); git's own arguments stay as written.
+      const name = part.replace(/^-[A-Za-z]*S/, '').replace(/^--[A-Za-z-]+=/, '')
+      if (isGit(name)) found.push([name, ...parts.slice(k + 1), ...words.slice(j + 1)])
     })
   }
   return found

@@ -250,3 +250,17 @@ describe('guard: env -S strings split the way env splits them', () => {
   ]
   for (const c of blocked) test(`refuses: ${c}`, () => expect(refusal(c)).not.toBe(null))
 })
+
+describe('guard: wrapper spellings and env -S expansions', () => {
+  const blocked = [
+    'env -S "git push --force-with-lease=main origin"',
+    'env -S "git push --force=yes origin"',
+    "env G=git -S '${G} reset --hard'",
+    '/usr/bin/timeout 5 git reset --hard',
+    'TIMEOUT 5 git reset --hard',
+    '/usr/bin/env -S "git add ."',
+  ]
+  for (const c of blocked) test(`refuses: ${c}`, () => expect(refusal(c)).not.toBe(null))
+  const allowed = ['/usr/bin/timeout 5 make', "env -S '${HOME}/bin/build'"]
+  for (const c of allowed) test(`allows: ${c}`, () => expect(refusal(c)).toBe(null))
+})
