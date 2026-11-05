@@ -1,0 +1,7 @@
+{
+  "name": "checklist",
+  "version": "0.8.0",
+  "description": "A task checklist pane beside the chat, with a board of every session on this Mac and this session's subagents. Draws the sidebar and bandAbovePrompt blocks of ~/.claude/terminal-layout.json",
+  "author": { "name": "dgtlwrks" },
+  "types": "./types/index.d.ts"
+}

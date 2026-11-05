@@ -1,0 +1,180 @@
+// Written by scripts/sync.sh from layouts/default.json. Edit that file, not this one.
+export default {
+  "format": "claude-terminal-layout",
+  "version": 1,
+  "sidebar": [
+    {
+      "key": "checklist",
+      "title": "Checklist",
+      "badge": "count",
+      "lines": [
+        { "key": "checklist.title", "elements": [{ "key": "checklist.title", "text": "Fix the login timeout", "style": ["b"] }] },
+        {
+          "key": "checklist.progress",
+          "elements": [
+            { "key": "checklist.done", "text": "4 of 5 done", "style": ["dim"] },
+            { "key": "sep", "text": "·", "style": ["dim"] },
+            { "key": "checklist.updated", "text": "updated 16:58 UTC", "style": ["dim"] }
+          ]
+        },
+        { "key": "spacer", "elements": [] },
+        {
+          "key": "checklist.step",
+          "elements": [
+            { "key": "step.mark", "text": "✓" },
+            { "key": "step.num", "text": "1." },
+            { "key": "step.text", "text": "Read the session module" },
+            { "key": "step.when", "text": "(16:40 UTC)", "spaceBefore": 2 }
+          ]
+        },
+        { "key": "checklist.step", "elements": [{ "key": "step.mark", "text": "✓" }, { "key": "step.num", "text": "2." }, { "key": "step.text", "text": "Patch the timeout" }] },
+        { "key": "checklist.step", "elements": [{ "key": "step.mark", "text": "✓" }, { "key": "step.num", "text": "3." }, { "key": "step.text", "text": "Run the tests" }] },
+        { "key": "checklist.step", "elements": [{ "key": "step.mark", "text": "✓" }, { "key": "step.num", "text": "4." }, { "key": "step.text", "text": "Commit the fix" }] },
+        { "key": "checklist.step", "elements": [{ "key": "step.mark", "text": "▸" }, { "key": "step.num", "text": "5." }, { "key": "step.text", "text": "Update the changelog" }] }
+      ]
+    },
+    {
+      "key": "sessions",
+      "title": "Sessions",
+      "badge": "count",
+      "lines": [
+        {
+          "key": "session.row",
+          "elements": [
+            { "key": "session.state", "text": "●" },
+            { "key": "session.name", "text": "api", "width": 5 },
+            { "key": "session.status", "text": "waiting on you", "width": 14 },
+            { "key": "session.alert", "text": "🔔", "width": 2 },
+            { "key": "text", "text": "ctx" },
+            { "key": "session.ctx", "text": "61%", "width": 3, "align": "right" }
+          ]
+        },
+        {
+          "key": "session.task",
+          "elements": [
+            { "key": "spacer", "width": 1 },
+            { "key": "session.task", "text": "Fix the login timeout" }
+          ]
+        },
+        {
+          "key": "session.row",
+          "elements": [
+            { "key": "session.state", "text": "▸" },
+            { "key": "session.name", "text": "shop", "width": 5 },
+            { "key": "session.status", "text": "step 5/5", "width": 17 },
+            { "key": "text", "text": "ctx" },
+            { "key": "session.ctx", "text": "23%", "width": 3, "align": "right" }
+          ]
+        },
+        {
+          "key": "session.row",
+          "elements": [
+            { "key": "session.state", "text": "○" },
+            { "key": "session.name", "text": "docs", "width": 5 },
+            { "key": "session.status", "text": "idle 14m", "width": 17 },
+            { "key": "text", "text": "ctx" },
+            { "key": "session.ctx", "text": "8%", "width": 3, "align": "right" }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "subagents",
+      "title": "Subagents",
+      "lines": [
+        {
+          "key": "subagent.row",
+          "elements": [
+            { "key": "agent.state", "text": "▸" },
+            { "key": "agent.type", "text": "Explore", "width": 16 },
+            { "key": "agent.status", "text": "running" },
+            { "key": "agent.time", "text": "0:42" }
+          ]
+        },
+        {
+          "key": "subagent.row",
+          "elements": [
+            { "key": "agent.state", "text": "✓" },
+            { "key": "agent.type", "text": "general-purpose", "width": 16 },
+            { "key": "agent.status", "text": "completed" }
+          ]
+        }
+      ]
+    }
+  ],
+  "bandAbovePrompt": [],
+  "turnSummary": [
+    {
+      "key": "turn.summary",
+      "elements": [
+        { "key": "mark", "text": "↳" },
+        { "key": "text", "text": "this turn:" },
+        { "key": "turn.out", "text": "2.1k out" },
+        { "key": "sep", "text": "·" },
+        { "key": "turn.in", "text": "1.2M in" },
+        { "key": "sep", "text": ",", "spaceBefore": 0 },
+        { "key": "turn.cache", "text": "97% from cache" },
+        { "key": "sep", "text": "·" },
+        { "key": "turn.time", "text": "1m 52s" },
+        { "key": "sep", "text": "·" },
+        { "key": "turn.tools", "text": "7 tool calls" },
+        { "key": "sep", "text": "·" },
+        { "key": "turn.blocked", "text": "1 blocked" }
+      ]
+    }
+  ],
+  "statusLine": [
+    {
+      "key": "status.1",
+      "elements": [
+        { "key": "text", "text": "[", "style": ["c"] },
+        { "key": "model", "text": "Opus 5.5", "style": ["c"], "spaceBefore": 0 },
+        { "key": "sep", "text": "·", "style": ["c"] },
+        { "key": "effort", "text": "xhigh", "style": ["c"] },
+        { "key": "text", "text": "]", "style": ["c"], "spaceBefore": 0 },
+        { "key": "emoji", "text": "📁" },
+        { "key": "cwd", "text": "...projects/acme/shop", "style": ["m"] },
+        { "key": "sep", "text": "|" },
+        { "key": "emoji", "text": "🌿" },
+        { "key": "branch", "text": "main", "style": ["m"] },
+        { "key": "git.mark", "text": "👍" },
+        { "key": "diff.add", "text": "+75", "style": ["g"] },
+        { "key": "diff.del", "text": "−8", "style": ["r"] }
+      ]
+    },
+    {
+      "key": "status.2",
+      "elements": [
+        { "key": "ctx.bar", "segments": [{ "text": "██", "style": ["g"] }, { "text": "░░░░░░░░", "style": ["dim"] }] },
+        { "key": "ctx.pct", "text": "23%" },
+        { "key": "ctx.tokens", "text": "226k/1M" },
+        { "key": "sep", "text": "|" },
+        { "key": "cost", "text": "$4.88", "style": ["y"] },
+        { "key": "sep", "text": "|" },
+        { "key": "emoji", "text": "⏱️" },
+        { "key": "duration", "text": "20m 28s" },
+        { "key": "sep", "text": "|" },
+        { "key": "limit.5h", "text": "5h 12%" },
+        { "key": "limit.5h.reset", "text": "↻14:00" },
+        { "key": "sep", "text": "|" },
+        { "key": "limit.week", "text": "wk 26%" },
+        { "key": "limit.week.reset", "text": "↻Mon 14:00" }
+      ]
+    },
+    {
+      "key": "status.3",
+      "elements": [
+        { "key": "emoji", "text": "💬" },
+        { "key": "session.name", "text": "Fix the login timeout" },
+        { "key": "sep", "text": "|" },
+        { "key": "cache", "text": "⚡ cache warm 97% hit, cold in 19m" },
+        { "key": "sep", "text": "|" },
+        { "key": "emoji", "text": "🔗" },
+        { "key": "repo", "text": "acme/shop", "style": ["u"] },
+        { "key": "sep", "text": "|" },
+        { "key": "pr", "text": "PR #42 approved" }
+      ]
+    }
+  ],
+  "parked": { "blocks": [], "lines": [], "elements": [] }
+}

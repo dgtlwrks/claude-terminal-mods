@@ -1,0 +1,873 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Terminal Layout Editor</title>
+<meta name="description" content="Arrange your Claude Code terminal by drag and drop, then export a layout JSON for the claude-terminal-mods plugins and status line.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;700&display=swap">
+<style>
+/* Layout: a fixed dark terminal shell, then the library and the parked tray under it; an inspector on the right. */
+:root {
+  --bg: #eceef1; --fg: #1b1f24; --muted: #5d6672; --line: #d2d7de; --panel: #ffffff; --accent: #2f6bd6; --accent-fg: #ffffff; --warn: #c9463d;
+  /* The terminal is one deliberate dark world in both themes. */
+  --t-bg: #1c1c1c; --t-edge: #333333; --t-fg: #d8d8d8; --t-dim: #8c8c8c; --t-g: #99cc99; --t-y: #ffcc66; --t-r: #f2777a;
+  --t-c: #66cccc; --t-m: #d6a0e8; --t-rule: #3d3d3d; --t-tag-bg: #2f4a6b; --t-tag-fg: #cfe3ff; --t-sel: #ffcc66; --t-ghost: #262626;
+  --t-x-bg: #4a4a4a; --t-x-fg: #f0f0f0; --t-ink: #111111;
+  --f-ui: 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+  --f-mono: 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --bg: #0f1113; --fg: #e3e6ea; --muted: #8d959f; --line: #2a2f35; --panel: #171a1d; --accent: #7aa2f7; --accent-fg: #0f1113; --warn: #f2777a; color-scheme: dark; }
+}
+:root[data-theme="dark"] { --bg: #0f1113; --fg: #e3e6ea; --muted: #8d959f; --line: #2a2f35; --panel: #171a1d; --accent: #7aa2f7; --accent-fg: #0f1113; --warn: #f2777a; color-scheme: dark; }
+
+body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.5 var(--f-ui); }
+.app { max-width: 1480px; margin: 0 auto; padding-block: 20px 48px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.bar { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end; justify-content: space-between; margin-bottom: 18px; }
+h1 { font: 600 20px/1.2 var(--f-ui); margin: 0; text-wrap: balance; }
+.bar p { margin: 4px 0 0; color: var(--muted); max-width: 65ch; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; }
+button { font: 500 13px/1.3 var(--f-ui); border: 1px solid var(--line); background: var(--panel); color: var(--fg); border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+button:hover { border-color: var(--muted); }
+button.primary { background: var(--accent); color: var(--accent-fg); border-color: transparent; }
+button.warn { border-color: var(--warn); color: var(--warn); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.seg button { border: 0; border-radius: 0; }
+.seg button[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
+
+.work { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 20px; align-items: start; }
+.stage { min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+.scroller { overflow-x: auto; border-radius: 12px; }
+
+/* Terminal */
+.term { min-width: 940px; background: var(--t-bg); color: var(--t-fg); border: 1px solid var(--t-edge); border-radius: 12px; padding: 26px 30px 22px 36px; font: 13px/1.6 var(--f-mono); }
+.split { display: grid; grid-template-columns: minmax(0, 1fr) 52ch; }
+.tx { padding-right: 20px; position: relative; }
+.pane { border-left: 1px solid var(--t-rule); padding-left: 26px; min-height: 26em; }
+.row { white-space: pre; }
+.gap { height: 1.6em; }
+.blocks { display: flex; flex-direction: column; gap: 1.6em; }
+.lines { display: flex; flex-direction: column; }
+#band-zone { margin-top: 1.4em; }
+.rule { border-top: 1px solid var(--t-rule); margin: 1.2em 0 .5em; }
+.rule.tight { margin: .5em 0 .5em; }
+.cursor { display: inline-block; width: .62em; height: 1.2em; background: var(--t-fg); vertical-align: -.22em; }
+.prompt, .mode { position: relative; white-space: pre; }
+.mode { color: var(--t-dim); }
+
+.block { position: relative; border-radius: 4px; }
+.bh { white-space: pre; }
+.line { position: relative; border-radius: 3px; padding-right: 1.4em; }
+.els { display: flex; flex-wrap: wrap; align-items: baseline; min-height: 1.6em; }
+.el { position: relative; white-space: pre; display: inline-block; border-radius: 2px; }
+.els > .el:first-child { margin-left: 0 !important; }
+.grip { position: absolute; left: -1.6em; top: 0; width: 1.3em; text-align: center; color: var(--t-dim); opacity: 0; user-select: none; }
+.tag, .tagel { display: inline-block; font: 600 11px/1.55 var(--f-ui); background: var(--t-tag-bg); color: var(--t-tag-fg); border-radius: 4px; padding: 0 6px; }
+.tag { margin-left: .7ch; vertical-align: 1px; }
+
+.g { color: var(--t-g); } .y { color: var(--t-y); } .r { color: var(--t-r); } .c { color: var(--t-c); } .m { color: var(--t-m); }
+.dim { opacity: .55; } .b { font-weight: 700; } .u { text-decoration: underline; text-underline-offset: 3px; }
+
+/* Remove buttons */
+.x { display: none; position: absolute; z-index: 5; width: 16px; height: 16px; padding: 0; border-radius: 50%; border: 1px solid #666; background: var(--t-x-bg); color: var(--t-x-fg); font: 600 11px/14px var(--f-ui); text-align: center; cursor: pointer; }
+.x:hover { background: var(--warn); border-color: var(--warn); }
+.el > .x { top: -.75em; right: -.7em; }
+.line > .x { top: .2em; right: 0; }
+.block > .x { top: 0; right: 0; }
+.edit .el:hover > .x, .edit .el.sel > .x, .edit .line:hover > .x, .edit .line.sel > .x, .edit .block:hover > .x, .edit .block.sel > .x { display: block; }
+.edit .el:hover ~ .x { display: none; }
+
+/* Edit mode */
+.edit { user-select: none; -webkit-user-select: none; }
+.edit .el { cursor: grab; touch-action: none; }
+.edit .el:hover { outline: 1px dashed var(--t-c); outline-offset: 1px; }
+.edit .el.spacer { outline: 1px dotted rgba(255, 255, 255, .22); }
+.edit .line:hover { background: rgba(255, 255, 255, .035); }
+.edit .line:hover > .grip, .edit .line.sel > .grip { opacity: 1; }
+.edit .grip { cursor: grab; touch-action: none; }
+.edit .bh { cursor: grab; touch-action: none; }
+.edit .block { outline: 1px dashed transparent; outline-offset: 6px; }
+.edit .block:hover { outline-color: rgba(255, 255, 255, .16); }
+.edit .els:empty::before { content: 'empty line \00b7  drop elements here'; color: var(--t-dim); opacity: .6; font-style: italic; }
+.edit #band-zone { outline: 1px dashed rgba(255, 255, 255, .12); outline-offset: 6px; border-radius: 4px; }
+.term:not(.edit) #band-zone.empty { display: none; }
+.ph { color: var(--t-dim); opacity: .7; font-style: italic; }
+.term:not(.edit) .ph { display: none; }
+.add { display: none; }
+.edit .add { display: inline-block; align-self: flex-start; background: transparent; border: 1px dashed var(--t-rule); color: var(--t-dim); font: 12px/1.4 var(--f-mono); padding: 1px 8px; margin-top: 4px; border-radius: 4px; }
+.edit .add:hover { color: var(--t-fg); border-color: var(--t-dim); }
+.sel { outline: 1.5px solid var(--t-sel) !important; outline-offset: 2px !important; }
+.dragging { opacity: .25; }
+.drop-on { background: rgba(102, 204, 204, .07); border-radius: 3px; }
+.edit .locked:hover::after { content: attr(data-lock); position: absolute; right: 0; top: 0; font: 11px/1.6 var(--f-ui); color: var(--t-dim); background: var(--t-bg); padding: 0 6px; border: 1px solid var(--t-rule); border-radius: 4px; }
+.edit .tx.locked:hover::after { right: 20px; }
+
+#marker { position: fixed; z-index: 1001; background: var(--t-sel); pointer-events: none; border-radius: 1px; display: none; box-shadow: 0 0 0 1px rgba(0, 0, 0, .5); }
+#ghosts { position: fixed; left: 0; top: 0; z-index: 1000; pointer-events: none; font: 13px/1.6 var(--f-mono); color: var(--t-fg); }
+.ghost { position: absolute; left: 0; top: 0; margin: 0 !important; background: var(--t-ghost); border: 1px solid #555; border-radius: 4px; padding: 0 4px; box-shadow: 0 8px 24px rgba(0, 0, 0, .55); }
+.ghost .grip, .ghost .add, .ghost .x { display: none !important; }
+.ghost.to-park::after { content: '\2192  Parked'; position: absolute; left: 100%; top: -2px; margin-left: 10px; font: 600 11px/1.6 var(--f-ui); background: var(--t-sel); color: var(--t-ink); padding: 0 7px; border-radius: 4px; white-space: nowrap; }
+.ghost.to-nowhere { opacity: .5; }
+body.is-dragging, body.is-dragging * { cursor: grabbing !important; }
+
+/* Dark panels under the terminal: library and parked tray */
+.tray { background: var(--t-bg); color: var(--t-fg); border: 1px solid var(--t-edge); border-radius: 12px; padding: 14px 20px 18px; font: 13px/1.6 var(--f-mono); }
+.tray-h { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; font: 500 13px/1.4 var(--f-ui); margin-bottom: 10px; }
+.tray-h span { color: var(--t-dim); font-weight: 400; }
+.trayg { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.tcol { border: 1px dashed var(--t-rule); border-radius: 8px; padding: 8px 12px 12px 28px; min-width: 0; min-height: 84px; }
+.tcol h3, .libg h3 { font: 600 11px/1.4 var(--f-ui); letter-spacing: .07em; text-transform: uppercase; color: var(--t-dim); margin: 0 0 8px; }
+.tcol h3 { margin-left: -16px; }
+#p-els { gap: 8px 10px; }
+#p-els > .el { margin-left: 0 !important; }
+
+.libgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px 18px; }
+.libg { min-width: 0; }
+.libg.wide { grid-column: span 2; }
+.libitems { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start; }
+.libg.stack .libitems { flex-direction: column; align-items: stretch; }
+.libitem { margin: 0 !important; padding: 1px 7px; border: 1px solid var(--t-rule); border-radius: 5px; background: rgba(255, 255, 255, .02); cursor: grab; touch-action: none; }
+.libitem:hover { border-color: var(--t-dim); outline: none !important; }
+.libitem.line, .libitem.block { padding: 4px 10px; }
+.libitem.block { padding-bottom: 6px; }
+.libitem .els:empty::before { content: 'empty line'; }
+.libitem.spacer { min-width: 4ch; }
+.custom { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.custom input { font: 13px/1.4 var(--f-mono); color: var(--t-fg); background: var(--t-ink); border: 1px solid var(--t-rule); border-radius: 5px; padding: 4px 8px; min-width: 0; flex: 1 1 140px; }
+.custom button { background: transparent; color: var(--t-fg); border-color: var(--t-rule); font-size: 12px; padding: 4px 10px; }
+.libnote { color: var(--t-dim); font: 12px/1.5 var(--f-ui); margin: 10px 0 0; }
+
+/* Side panel */
+.side { position: sticky; top: 16px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+.card h2 { font: 600 11px/1.4 var(--f-ui); letter-spacing: .07em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px; }
+.ihead { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 4px; }
+.chip { font: 600 11px/1.6 var(--f-ui); padding: 0 8px; border-radius: 999px; background: var(--accent); color: var(--accent-fg); }
+.ikey { font: 12px/1.4 var(--f-mono); color: var(--muted); }
+.path { font: 12px/1.5 var(--f-mono); color: var(--muted); overflow-wrap: anywhere; margin-bottom: 12px; }
+.hint { color: var(--muted); margin: 0; }
+.fld { display: flex; flex-direction: column; gap: 3px; margin-bottom: 10px; font-size: 12px; color: var(--muted); min-width: 0; }
+.fld input { font: 13px/1.4 var(--f-mono); color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; width: 100%; box-sizing: border-box; }
+.frow { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.styles { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 12px; }
+.styles button { font-size: 12px; padding: 2px 8px; }
+.styles button[aria-pressed="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+.flabel { font-size: 12px; color: var(--muted); margin: 0 0 4px; }
+.acts { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+.keys { margin: 0; padding: 0; display: grid; gap: 7px; font-size: 13px; }
+.keys li { list-style: none; }
+kbd { font: 11px/1.4 var(--f-mono); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; background: var(--bg); }
+details summary { cursor: pointer; font: 600 11px/1.4 var(--f-ui); letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
+.jsonta { margin-top: 10px; width: 100%; box-sizing: border-box; height: 220px; font: 11px/1.45 var(--f-mono); color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px; resize: vertical; }
+.imp-acts { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 8px; }
+.imp-acts input[type="file"] { font-size: 12px; max-width: 100%; }
+#imp-msg { margin: 8px 0 0; font-size: 13px; }
+#imp-msg.bad { color: var(--warn); }
+#imp-msg.ok { color: var(--accent); }
+
+.bar p.howto { color: var(--fg); }
+.bar code, .foot code { font: 12px/1.4 var(--f-mono); background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; }
+a { color: var(--accent); }
+.foot { margin-top: 28px; padding-top: 14px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; }
+.warnmsg { color: var(--warn); margin: 0 0 10px; }
+.edit .el.nodraw, .edit .el.nodraw:hover { outline: 1px dashed var(--t-r) !important; outline-offset: 1px; }
+.term:not(.edit) .el.nodraw { opacity: .5; }
+
+@media (max-width: 1180px) { .work { grid-template-columns: minmax(0, 1fr); } .side { position: static; } }
+@media (max-width: 720px) { .trayg { grid-template-columns: minmax(0, 1fr); } .libg.wide { grid-column: auto; } }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <header class="bar">
+    <div>
+      <h1>Terminal Layout Editor</h1>
+      <p>Arrange your Claude Code terminal: the sidebar, the band above the prompt, the turn summary and the status line. Blocks, lines and single elements move on their own.</p>
+      <p class="howto"><b>How to use it:</b> export (Copy layout JSON or Download) &rarr; save as <code>~/.claude/terminal-layout.json</code> &rarr; see the README at <a href="https://github.com/dgtlwrks/claude-terminal-mods">https://github.com/dgtlwrks/claude-terminal-mods</a></p>
+    </div>
+    <div class="actions">
+      <div class="seg" role="group" aria-label="Mode">
+        <button id="m-edit" aria-pressed="true">Edit</button>
+        <button id="m-prev" aria-pressed="false">Preview</button>
+      </div>
+      <button id="reset">Reset layout</button>
+      <button id="import">Import JSON</button>
+      <button id="download">Download</button>
+      <button id="copy" class="primary">Copy layout JSON</button>
+    </div>
+  </header>
+
+  <div class="work">
+    <div class="stage">
+      <div class="scroller">
+        <div class="term edit" id="term" data-dnd>
+          <div class="split">
+            <div class="tx locked" data-zone="turn" data-lock="Transcript · drawn by Claude Code">
+              <div class="row">❯ fix the login timeout and commit</div>
+              <div class="gap"></div>
+              <div class="row"><span class="g">●</span> Read <span class="b">src/auth/session.ts</span></div>
+              <div class="row"><span class="g">●</span> Bash <span class="b">git add .</span></div>
+              <div class="row r">  blocked by a hook: stage only the files you changed</div>
+              <div class="row"><span class="g">●</span> Bash <span class="b">git add src/auth/session.ts</span></div>
+              <div class="row"><span class="g">●</span> Bash <span class="b">npm test</span></div>
+              <div class="row dim">  ✓ 18 passed · 0 failed</div>
+              <div class="row"><span class="g">●</span> Bash <span class="b">git commit -m "Fix login timeout"</span></div>
+              <div class="gap"></div>
+              <div class="row">The login timeout is fixed; committed as a1b2c3d.</div>
+              <div id="turn" class="lines"></div>
+              <div class="row dim" title="Drawn by Claude Code, not by the layout">✱ Churned for 1m 52s</div>
+            </div>
+            <div class="pane" data-zone="sidebar">
+              <div id="sidebar" class="blocks"></div>
+            </div>
+          </div>
+          <div id="band-zone" data-zone="band"><div id="band" class="blocks"></div></div>
+          <div class="rule"></div>
+          <div class="prompt locked" data-lock="Prompt · fixed">❯ <span class="cursor"></span></div>
+          <div class="rule tight"></div>
+          <div data-zone="status"><div id="status" class="lines"></div></div>
+          <div class="mode locked" data-lock="Mode line · fixed">▸▸ auto mode on (shift+tab to cycle)</div>
+        </div>
+      </div>
+
+      <section class="tray edit" id="lib" data-dnd aria-label="Library">
+        <div class="tray-h">Library <span>Drag a piece onto the screen, or click it to add it next to the selection.</span></div>
+        <div class="libgrid" id="libgrid"></div>
+        <p class="libnote">Paste with <b>Cmd+V</b> anywhere outside a text field: the text or emoji becomes a new element next to the selection.</p>
+      </section>
+
+      <section class="tray edit" id="tray" data-dnd aria-label="Parked items">
+        <div class="tray-h">Parked <span>Press × or drag anything off the screen to park it. Drag it back to show it again.</span></div>
+        <div class="trayg">
+          <div class="tcol" data-zone="p-blocks"><h3>Blocks</h3><div id="p-blocks" class="blocks"></div></div>
+          <div class="tcol" data-zone="p-lines"><h3>Lines</h3><div id="p-lines" class="lines"></div></div>
+          <div class="tcol" data-zone="p-els"><h3>Elements</h3><div id="p-els" class="els"></div></div>
+        </div>
+      </section>
+    </div>
+
+    <aside class="side">
+      <div class="card"><h2>Selection</h2><div id="insp"></div></div>
+      <div class="card">
+        <h2>How it works</h2>
+        <ul class="keys">
+          <li>Drag an <b>element</b> within its line, into another line, or off the screen to park it.</li>
+          <li>Drag a <b>line</b> by its ⠿ handle or by empty space in it.</li>
+          <li>Drag a <b>block</b> by its title. Blocks go in the sidebar or the band above the prompt.</li>
+          <li>× parks an item. In Parked, × deletes it for good.</li>
+          <li>Double-click an element to edit its text.</li>
+          <li><kbd>Del</kbd> parks the selection. <kbd>Alt</kbd>+arrows nudge it. <kbd>Esc</kbd> clears.</li>
+          <li>A red dashed outline marks a data element that will not be drawn where it sits: its data belongs to another part of the screen.</li>
+          <li>The transcript, the "Churned for" line, the prompt and the mode line are drawn by Claude Code and stay fixed.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <details id="jsonbox"><summary>Layout JSON</summary>
+          <textarea id="json" class="jsonta" readonly spellcheck="false" aria-label="Layout JSON"></textarea>
+        </details>
+      </div>
+      <div class="card">
+        <details id="importbox"><summary>Import JSON</summary>
+          <textarea id="imp" class="jsonta" spellcheck="false" aria-label="Layout JSON to import" placeholder="Paste a layout JSON exported from this editor"></textarea>
+          <div class="imp-acts">
+            <button id="imp-load" class="primary" type="button">Load layout</button>
+            <input id="imp-file" type="file" accept=".json,application/json,text/plain" aria-label="Choose a JSON file">
+          </div>
+          <p id="imp-msg" role="status"></p>
+        </details>
+      </div>
+    </aside>
+  </div>
+</div>
+<footer class="app foot">
+  <a href="https://github.com/dgtlwrks/claude-terminal-mods">github.com/dgtlwrks/claude-terminal-mods</a> &middot; MIT
+</footer>
+<div id="ghosts"></div>
+<div id="marker"></div>
+
+<script src="default-layout.js"></script>
+<script>
+const $ = s => document.querySelector(s);
+const h = (tag, cls, txt) => { const n = document.createElement(tag); if (cls) n.className = cls; if (txt != null) n.textContent = txt; return n; };
+/* ==== format: start (scripts outside the page evaluate this block) ==== */
+let uid = 0;
+const nid = p => p + (++uid).toString(36);
+const E = (key, text, o = {}) => ({ id: nid('e'), key, text, cls: o.c || '', sp: o.sp ?? 1, w: o.w || 0, align: o.a || '', segs: o.segs || null });
+const L = (key, items) => ({ id: nid('l'), key, items });
+const B = (key, title, badge, lines) => ({ id: nid('b'), key, title, badge, lines });
+const STYLES = [['g', 'green'], ['y', 'yellow'], ['r', 'red'], ['c', 'cyan'], ['m', 'magenta'], ['dim', 'dim'], ['b', 'bold'], ['u', 'underline'], ['tagel', 'badge'], ['spacer', 'spacer']];
+const STYLE_SET = new Set(STYLES.map(s => s[0]));
+// Keys whose text is the element's own. Every other key is data the mods fill in (see CAT below).
+const LITERALS = new Set(['text', 'sep', 'emoji', 'mark', 'spacer', 'badge', 'rule', 'bar', 'spark', 'meter']);
+
+function serialize(lay) {
+  const elJ = e => {
+    const o = { key: e.key };
+    if (e.segs) o.segments = e.segs.map(([t, c]) => (c ? { text: t, style: c.split(' ') } : { text: t })); else if (e.text != null) o.text = e.text;
+    if (e.cls) o.style = e.cls.split(' ').filter(Boolean);
+    if (e.sp !== 1) o.spaceBefore = e.sp;
+    if (e.w) o.width = e.w;
+    if (e.align) o.align = 'right';
+    return o;
+  };
+  const lineJ = l => ({ key: l.key, elements: l.items.map(elJ) });
+  const blockJ = b => ({ key: b.key, title: b.title, ...(b.badge ? { badge: b.badge } : {}), lines: b.lines.map(lineJ) });
+  const P = lay.parked;
+  return {
+    format: 'claude-terminal-layout', version: 1,
+    sidebar: lay.sidebar.map(blockJ), bandAbovePrompt: lay.band.map(blockJ),
+    turnSummary: lay.turn.map(lineJ), statusLine: lay.status.map(lineJ),
+    parked: { blocks: P.blocks.map(blockJ), lines: P.lines.map(lineJ), elements: P.els.map(elJ) }
+  };
+}
+const arr = a => (Array.isArray(a) ? a : []);
+const styleStr = s => arr(s).map(String).filter(c => STYLE_SET.has(c)).join(' ');
+const num = (v, d, max) => (Number.isFinite(v) ? Math.max(0, Math.min(max, Math.round(v))) : d);
+const elF = o => {
+  if (!o || typeof o !== 'object') throw new Error('An element is not an object.');
+  const e = E(String(o.key || 'text'), o.text != null ? String(o.text) : undefined, { c: styleStr(o.style), sp: num(o.spaceBefore, 1, 12), w: num(o.width, 0, 40), a: o.align === 'right' ? 'r' : '' });
+  if (Array.isArray(o.segments)) e.segs = o.segments.map(s => [String((s && s.text) ?? ''), styleStr(s && s.style)]);
+  return e;
+};
+const lineF = o => L(String((o && o.key) || 'line'), arr(o && o.elements).map(elF));
+const blockF = o => B(String((o && o.key) || 'custom'), String((o && o.title) ?? ''), o && o.badge ? String(o.badge) : '', arr(o && o.lines).map(lineF));
+function fromJSON(j) {
+  if (!j || typeof j !== 'object' || j.format !== 'claude-terminal-layout') throw new Error('This is not a layout from this editor: "format" must be "claude-terminal-layout".');
+  if (j.version !== 1) throw new Error('Unknown layout version ' + j.version + '. This editor reads version 1.');
+  const p = j.parked || {};
+  return {
+    sidebar: arr(j.sidebar).map(blockF), band: arr(j.bandAbovePrompt).map(blockF),
+    turn: arr(j.turnSummary).map(lineF), status: arr(j.statusLine).map(lineF),
+    parked: { blocks: arr(p.blocks).map(blockF), lines: arr(p.lines).map(lineF), els: arr(p.elements).map(elF) }
+  };
+}
+/* ==== format: end ==== */
+const elText = e => e.segs ? e.segs.map(s => s[0]).join('') : (e.text || e.key);
+
+/* Data keys by region: a data element is drawn only where its key is listed. Block keys other than these draw literals only. */
+const keySet = t => new Set(t.split(' '));
+const CAT = {
+  status: { name: 'status line', keys: keySet('model effort cwd branch git.mark diff.add diff.del ctx.bar ctx.pct ctx.tokens cost duration limit.5h limit.5h.reset limit.week limit.week.reset session.name cache cache.hit cache.cold repo pr') },
+  turn: { name: 'turn line', plain: true, keys: keySet('turn.out turn.in turn.cache turn.time turn.tools turn.blocked') }
+};
+const BLOCK_CAT = new Map([
+  ['checklist', { name: 'checklist block', keys: keySet('checklist.title checklist.done checklist.updated step.mark step.num step.text step.when') }],
+  ['sessions', { name: 'sessions block', keys: keySet('session.state session.name session.status session.alert session.ctx session.task') }],
+  ['subagents', { name: 'subagents block', keys: keySet('agent.state agent.type agent.status agent.time') }]
+]);
+const CUSTOM = { name: 'custom block', keys: new Set() };
+const ALL_CATS = [...Object.values(CAT), ...BLOCK_CAT.values()];
+// Why an element will not be drawn where it sits, or ''. region null = parked or library: no warning.
+function drawWarn(e, region) {
+  if (!region || LITERALS.has(e.key) || region.keys.has(e.key)) return '';
+  const owners = ALL_CATS.filter(c => c.keys.has(e.key)).map(c => c.name);
+  return owners.length ? `Not drawn here: ${e.key} is ${owners.join(' or ')} data` : `Not drawn here: ${e.key} is not a data key the mods know`;
+}
+// Built-in block rows: the first line of a kind is the pattern for every live row; later ones are samples.
+const ROWS = { checklist: { 'checklist.step': 'checklist step' }, sessions: { 'session.row': 'session row', 'session.task': 'session task line' }, subagents: { 'subagent.row': 'subagent row' } };
+const BADGE_ROW = { checklist: 'checklist.step', sessions: 'session.row', subagents: 'subagent.row' };
+function rowRole(l, blk) {
+  const what = blk && ROWS[blk.key] && ROWS[blk.key][l.key];
+  return what ? { what, pattern: blk.lines.find(x => x.key === l.key) === l } : null;
+}
+const roleText = r => (r.pattern ? `This row is the pattern for every live ${r.what}.` : 'Sample row: the mods ignore it; the first row is the pattern.');
+
+function defaults() {
+  if (!window.DEFAULT_LAYOUT) throw new Error('default-layout.js did not load, so the default layout is missing.');
+  return fromJSON(window.DEFAULT_LAYOUT);
+}
+
+/* Library: every piece is a factory, so each use makes a fresh copy. */
+const el = (key, text, o) => ['el', () => E(key, text, o)];
+const bar = segs => ['el', () => E('bar', undefined, { segs })];
+const builtin = key => ['block', () => blockF(window.DEFAULT_LAYOUT.sidebar.find(b => b.key === key))];
+const LIB = [
+  { g: 'Text and dividers', items: [el('text', 'text'), el('sep', '|'), el('sep', '·', { c: 'dim' }), el('sep', '/', { c: 'dim' }), el('sep', '—', { c: 'dim' }),
+    el('sep', '→'), el('sep', '::', { c: 'dim' }), el('badge', '3', { c: 'tagel' }), el('spacer', '', { c: 'spacer', w: 4 })] },
+  { g: 'Bars and meters', items: [
+    bar([['██', 'g'], ['░░░░░░░░░', 'dim']]), bar([['▰▰▰▰', 'y'], ['▱▱▱▱▱▱', 'dim']]), bar([['■■■■■■■', 'r'], ['□□□', 'dim']]), bar([['[', ''], ['=====', 'g'], ['-----', 'dim'], [']', '']]),
+    el('spark', '▁▂▃▅▇▆▃', { c: 'c' }), el('meter', '◔', { c: 'y' }), el('meter', '◑', { c: 'y' }), el('meter', '◕', { c: 'g' })] },
+  { g: 'Status marks', items: [el('mark', '●', { c: 'g' }), el('mark', '●', { c: 'y' }), el('mark', '●', { c: 'r' }), el('mark', '○', { c: 'dim' }),
+    el('mark', '✓', { c: 'g' }), el('mark', '✗', { c: 'r' }), el('mark', '▸', { c: 'y' }), el('mark', '↳', { c: 'dim' }), el('mark', '✱', { c: 'dim' }),
+    el('mark', '⚠', { c: 'y' }), el('mark', '↻'), el('mark', '★', { c: 'y' })] },
+  { g: 'Status line data', wide: true, items: [
+    el('model', 'Opus 5.5', { c: 'c' }), el('effort', 'xhigh', { c: 'c' }), el('cwd', '...projects/acme/shop', { c: 'm' }), el('branch', 'main', { c: 'm' }),
+    el('git.mark', '👍'), el('diff.add', '+75', { c: 'g' }), el('diff.del', '−8', { c: 'r' }), ['el', () => E('ctx.bar', undefined, { segs: [['██', 'g'], ['░░░░░░░░', 'dim']] })],
+    el('ctx.pct', '23%'), el('ctx.tokens', '226k/1M'), el('cost', '$4.88', { c: 'y' }), el('duration', '20m 28s'),
+    el('limit.5h', '5h 12%'), el('limit.5h.reset', '↻14:00'), el('limit.week', 'wk 26%'), el('limit.week.reset', '↻Mon 14:00'),
+    el('session.name', 'Fix the login timeout'), el('cache', '⚡ cache warm 97% hit, cold in 19m'), el('cache.hit', 'cache warm 97% hit'), el('cache.cold', 'cold in 19m'), el('repo', 'acme/shop', { c: 'u' }), el('pr', 'PR #42 approved')] },
+  { g: 'Turn line data', items: [
+    el('turn.out', '2.1k out'), el('turn.in', '1.2M in'), el('turn.cache', '97% from cache'), el('turn.time', '1m 52s'), el('turn.tools', '7 tool calls'), el('turn.blocked', '1 blocked')] },
+  { g: 'Sidebar data', wide: true, items: [
+    el('checklist.title', 'Fix the login timeout', { c: 'b' }), el('checklist.done', '4 of 5 done', { c: 'dim' }), el('checklist.updated', 'updated 16:58 UTC', { c: 'dim' }),
+    el('step.mark', '✓'), el('step.num', '1.'), el('step.text', 'Read the session module'), el('step.when', '(16:40 UTC)'),
+    el('session.state', '●'), el('session.name', 'api', { w: 5 }), el('session.status', 'waiting on you'), el('session.alert', '🔔'), el('session.ctx', '61%', { w: 3, a: 'r' }), el('session.task', 'Fix the login timeout'),
+    el('agent.state', '▸'), el('agent.type', 'Explore', { w: 16 }), el('agent.status', 'running'), el('agent.time', '0:42')] },
+  { g: 'Emoji', items: '📁 🌿 👍 ⏱️ 💬 ⚡ 🔗 🔔 🧠 💾 🚀 ⏳ 📦 🐛 🔒 ⭐ 🎯 🔥 ✅ ❌ 💰 📊 🕐 🤖'.split(' ').map(ch => el('emoji', ch)) },
+  { g: 'Lines', stack: true, items: [['line', () => L('line', [])], ['line', () => L('rule', [E('rule', '─'.repeat(26), { c: 'dim' })])],
+    ['line', () => L('heading', [E('text', 'Heading', { c: 'b' })])]] },
+  { g: 'Blocks', wide: true, items: [['block', () => B('custom', 'New block', '', [L('line', [])])],
+    ['block', () => B('custom', 'New block', '1', [L('line', [E('text', 'first line')])])],
+    builtin('checklist'), builtin('sessions'), builtin('subagents')] },
+  { g: 'Your own text', custom: true, items: [] }
+];
+const LIBMAP = {};
+
+/* State and storage (per-viewer convenience only) */
+const KEY = 'terminal-layout-editor/v2';
+const S = { layout: null, sel: null, mode: 'edit' };
+const valid = l => l && ['sidebar', 'band', 'turn', 'status'].every(k => Array.isArray(l[k])) && l.parked && ['blocks', 'lines', 'els'].every(k => Array.isArray(l.parked[k]));
+function reid(l) {
+  const els = a => a.forEach(e => { e.id = nid('e'); });
+  const lines = a => a.forEach(x => { x.id = nid('l'); els(x.items); });
+  const blocks = a => a.forEach(b => { b.id = nid('b'); lines(b.lines); });
+  blocks(l.sidebar); blocks(l.band); lines(l.turn); lines(l.status);
+  blocks(l.parked.blocks); lines(l.parked.lines); els(l.parked.els);
+}
+function load() {
+  try { const raw = localStorage.getItem(KEY); if (raw) { const l = JSON.parse(raw); if (valid(l)) { reid(l); return l; } } } catch (_) {}
+  return defaults();
+}
+function save() { try { localStorage.setItem(KEY, JSON.stringify(S.layout)); } catch (_) {} }
+
+/* Rendering. conts: drop containers by id. meta: every draggable by id. */
+let conts = {}, meta = {};
+function reg(node, cid, arr, level, axis, label) { node.dataset.cid = cid; node.dataset.accept = level; conts[cid] = { arr, level, axis, label }; }
+function addBtn(text, fn) { const b = h('button', 'add', text); b.type = 'button'; b.addEventListener('click', fn); return b; }
+function xBtn(id, parked) {
+  const b = h('button', 'x', '×'); b.type = 'button'; b.tabIndex = -1;
+  b.title = parked ? 'Delete for good' : 'Park'; b.setAttribute('aria-label', b.title);
+  b.addEventListener('click', ev => { ev.stopPropagation(); park(id); });
+  return b;
+}
+
+function elNode(e, cid, label, region) {
+  const warn = drawWarn(e, region);
+  meta[e.id] = { obj: e, cid, level: 'el', label, region, warn };
+  const plain = region && region.plain;
+  const n = h('span', 'el ' + (plain ? '' : e.cls || '') + (warn ? ' nodraw' : ''));
+  n.dataset.level = 'el'; n.dataset.id = e.id; n.tabIndex = 0; n.title = warn || e.key;
+  if (e.segs && !plain) e.segs.forEach(([t, c]) => n.append(h('span', c || '', t))); else n.append(document.createTextNode(plain ? elText(e) : (e.text ?? '')));
+  n.style.marginLeft = e.sp + 'ch';
+  if (e.w) n.style.minWidth = e.w + 'ch';
+  if (e.align === 'r') n.style.textAlign = 'right';
+  n.append(xBtn(e.id, cid.startsWith('p-')));
+  return n;
+}
+function lineNode(l, cid, label, region, blk) {
+  meta[l.id] = { obj: l, cid, level: 'line', label, blk };
+  const n = h('div', 'line'); n.dataset.level = 'line'; n.dataset.id = l.id; n.tabIndex = 0;
+  const g = h('span', 'grip', '⠿'); g.dataset.grab = 'line'; g.setAttribute('aria-hidden', 'true');
+  const els = h('div', 'els');
+  reg(els, l.id, l.items, 'el', 'x', label);
+  l.items.forEach(e => els.append(elNode(e, l.id, label + ' › ' + elText(e), region)));
+  n.append(g, els, xBtn(l.id, cid.startsWith('p-')));
+  return n;
+}
+function blockNode(b, cid, label) {
+  meta[b.id] = { obj: b, cid, level: 'block', label };
+  const region = cid.startsWith('p-') || cid === 'lib' ? null : (BLOCK_CAT.get(b.key) || CUSTOM);
+  const n = h('section', 'block'); n.dataset.level = 'block'; n.dataset.id = b.id; n.tabIndex = 0;
+  const head = h('div', 'bh'); head.dataset.grab = 'block';
+  head.append(h('span', 'b', b.title || 'Untitled'));
+  // On a built-in block any badge means "show the live row count"; the sample rows stand in for it here.
+  const rk = BADGE_ROW[b.key], count = rk ? b.lines.filter(l => l.key === rk).length : 0;
+  const badge = rk ? (b.badge && count > 0 ? String(count) : '') : b.badge;
+  if (badge) head.append(h('span', 'tag', badge));
+  const body = h('div', 'lines');
+  reg(body, b.id, b.lines, 'line', 'y', label);
+  if (!b.lines.length) body.append(h('div', 'ph', 'empty block · drop lines here'));
+  b.lines.forEach((l, i) => body.append(lineNode(l, b.id, label + ' › line ' + (i + 1), region, b)));
+  body.append(addBtn('+ line', () => { const l = L('line', []); b.lines.push(l); S.sel = l.id; change(); }));
+  n.append(head, body, xBtn(b.id, cid.startsWith('p-')));
+  return n;
+}
+function fillBlocks(node, cid, arr, label, empty, canAdd) {
+  node.replaceChildren(); reg(node, cid, arr, 'block', 'y', label);
+  if (!arr.length && empty) node.append(h('div', 'ph', empty));
+  arr.forEach(b => node.append(blockNode(b, cid, label + ' › ' + (b.title || 'Untitled'))));
+  if (canAdd) node.append(addBtn('+ block', () => { const b = B('custom', 'New block', '', [L('line', [])]); arr.push(b); S.sel = b.id; change(); }));
+}
+function fillLines(node, cid, arr, label, empty, canAdd, region) {
+  node.replaceChildren(); reg(node, cid, arr, 'line', 'y', label);
+  if (!arr.length && empty) node.append(h('div', 'ph', empty));
+  arr.forEach((l, i) => node.append(lineNode(l, cid, label + ' › line ' + (i + 1), region)));
+  if (canAdd) node.append(addBtn('+ line', () => { const l = L('line', []); arr.push(l); S.sel = l.id; change(); }));
+}
+function fillEls(node, cid, arr, label, empty) {
+  node.replaceChildren(); reg(node, cid, arr, 'el', 'x', label);
+  if (!arr.length) node.append(h('div', 'ph', empty));
+  arr.forEach(e => node.append(elNode(e, cid, label + ' › ' + elText(e))));
+}
+
+function renderTerm() {
+  conts = {}; meta = {};
+  const P = S.layout.parked;
+  fillBlocks($('#sidebar'), 'sidebar', S.layout.sidebar, 'Sidebar', 'empty sidebar · drop a block here', true);
+  fillBlocks($('#band'), 'band', S.layout.band, 'Band above prompt', 'Band above prompt · drop a block here to show it above the prompt', true);
+  fillLines($('#turn'), 'turn', S.layout.turn, 'Turn summary', '', true, CAT.turn);
+  fillLines($('#status'), 'status', S.layout.status, 'Status line', 'empty status line · drop a line here', true, CAT.status);
+  fillBlocks($('#p-blocks'), 'p-blocks', P.blocks, 'Parked', 'none', false);
+  fillLines($('#p-lines'), 'p-lines', P.lines, 'Parked', 'none', false);
+  fillEls($('#p-els'), 'p-els', P.els, 'Parked', 'none');
+  $('#band-zone').classList.toggle('empty', !S.layout.band.length);
+  if (S.sel && !meta[S.sel]) S.sel = null;
+  markSel();
+  $('#json').value = JSON.stringify(serialize(S.layout), null, 2);
+}
+function change() { renderTerm(); inspect(); save(); }
+function markSel() {
+  document.querySelectorAll('.sel').forEach(n => n.classList.remove('sel'));
+  if (S.sel) { const n = document.querySelector(`[data-id="${S.sel}"]`); if (n) n.classList.add('sel'); }
+}
+function select(id) { S.sel = id || null; markSel(); inspect(); }
+function focusSel() { const n = S.sel && document.querySelector(`[data-id="${S.sel}"]`); if (n) n.focus({ preventScroll: true }); }
+
+/* Library rendering: the same visuals as on screen, with every drop and select hook stripped. */
+function libNode(id, level, make) {
+  const obj = make();
+  const saved = [conts, meta]; conts = {}; meta = {};
+  const n = level === 'el' ? elNode(obj, 'lib', '') : level === 'line' ? lineNode(obj, 'lib', '') : blockNode(obj, 'lib', '');
+  [conts, meta] = saved;
+  n.querySelectorAll('.x, .add, .grip, .ph').forEach(k => k.remove());
+  n.querySelectorAll('*').forEach(k => { k.removeAttribute('data-id'); k.removeAttribute('data-accept'); k.removeAttribute('data-cid'); k.removeAttribute('data-level'); k.removeAttribute('data-grab'); k.removeAttribute('tabindex'); });
+  n.removeAttribute('data-id');
+  n.classList.add('libitem');
+  n.dataset.level = level; n.dataset.lib = id; n.tabIndex = 0;
+  n.title = (level === 'el' ? obj.key : level === 'line' ? 'line: ' + obj.key : 'block') + ' · drag, or click to add';
+  return n;
+}
+function buildLibrary() {
+  const grid = $('#libgrid'); let k = 0;
+  LIB.forEach(group => {
+    const g = h('div', 'libg' + (group.wide ? ' wide' : '') + (group.stack ? ' stack' : ''));
+    g.append(h('h3', '', group.g));
+    const items = h('div', 'libitems');
+    group.items.forEach(([level, make]) => { const id = 'L' + (++k); LIBMAP[id] = { level, make }; items.append(libNode(id, level, make)); });
+    if (group.custom) {
+      const row = h('div', 'custom');
+      const input = h('input'); input.id = 'lib-text'; input.type = 'text'; input.placeholder = 'Type text or paste emoji'; input.setAttribute('aria-label', 'Your own text');
+      const make = () => E('text', input.value || 'text');
+      LIBMAP.custom = { level: 'el', make };
+      const chip = libNode('custom', 'el', make);
+      chip.dataset.lib = 'custom';
+      const add = h('button', '', 'Add'); add.type = 'button';
+      const sync = () => { chip.firstChild.textContent = input.value || 'text'; };
+      input.addEventListener('input', sync);
+      input.addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); insertNear(make(), 'el'); } });
+      add.addEventListener('click', () => insertNear(make(), 'el'));
+      row.append(input, add);
+      items.append(chip);
+      g.append(row);
+    }
+    g.append(items);
+    grid.append(g);
+  });
+}
+
+/* Add a new piece next to the selection; without a selection it goes to Parked (or the sidebar for blocks). */
+function insertNear(obj, level) {
+  const m = S.sel && meta[S.sel];
+  const after = (cid, ref) => { const a = conts[cid].arr; a.splice(a.indexOf(ref) + 1, 0, obj); };
+  if (level === 'el') {
+    if (m && m.level === 'el') after(m.cid, m.obj);
+    else if (m && m.level === 'line') m.obj.items.push(obj);
+    else if (m && m.level === 'block' && m.obj.lines.length) m.obj.lines[m.obj.lines.length - 1].items.push(obj);
+    else S.layout.parked.els.push(obj);
+  } else if (level === 'line') {
+    if (m && m.level === 'line') after(m.cid, m.obj);
+    else if (m && m.level === 'el' && meta[m.cid]) after(meta[m.cid].cid, meta[m.cid].obj);
+    else if (m && m.level === 'block') m.obj.lines.push(obj);
+    else S.layout.parked.lines.push(obj);
+  } else {
+    if (m && m.level === 'block') after(m.cid, m.obj);
+    else S.layout.sidebar.push(obj);
+  }
+  S.sel = obj.id; change();
+}
+
+/* Import (the format functions are above) */
+function importText(text) {
+  const msg = $('#imp-msg');
+  try {
+    let j;
+    try { j = JSON.parse(text); } catch (err) { throw new Error('The text is not valid JSON: ' + err.message); }
+    S.layout = fromJSON(j); S.sel = null; change();
+    msg.className = 'ok'; msg.textContent = 'Layout loaded.';
+  } catch (err) { msg.className = 'bad'; msg.textContent = err.message; }
+}
+
+/* Inspector */
+const clamp = (v, a, b) => Math.max(a, Math.min(b, Math.round(v) || 0));
+function field(label, id, type, val, set) {
+  const w = h('label', 'fld'); w.htmlFor = id;
+  const i = h('input'); i.id = id; i.type = type; i.value = val ?? '';
+  if (type === 'number') { i.min = '0'; i.inputMode = 'numeric'; }
+  i.addEventListener('input', () => { set(type === 'number' ? Number(i.value) : i.value); renderTerm(); save(); });
+  w.append(h('span', '', label), i);
+  return w;
+}
+function btn(text, fn, cls) { const b = h('button', cls || '', text); b.type = 'button'; b.addEventListener('click', fn); return b; }
+function inspect() {
+  const box = $('#insp'); box.replaceChildren();
+  const m = S.sel && meta[S.sel];
+  if (!m) { box.append(h('p', 'hint', 'Nothing selected. In edit mode, click an element, a line handle or a block title.')); return; }
+  const o = m.obj, parked = m.cid.startsWith('p-');
+  const head = h('div', 'ihead');
+  head.append(h('span', 'chip', { el: 'Element', line: 'Line', block: 'Block' }[m.level]), h('span', 'ikey', o.key || ''));
+  box.append(head, h('div', 'path', m.label));
+  if (m.level === 'el') {
+    if (m.warn) box.append(h('p', 'warnmsg', m.warn + '.'));
+    const lm = meta[m.cid], role = lm && lm.level === 'line' ? rowRole(lm.obj, lm.blk) : null;
+    if (role) box.append(h('p', 'hint', roleText(role) + ' Colors come from the row\'s state, so colors set here are ignored.'));
+    if (m.region && m.region.plain) box.append(h('p', 'hint', 'The turn summary is plain text: styles are not drawn there.'));
+    if (!o.segs) box.append(field('Text', 'f-text', 'text', o.text, v => { o.text = v; }));
+    box.append(h('p', 'flabel', 'Style'));
+    const st = h('div', 'styles');
+    const has = new Set((o.cls || '').split(' ').filter(Boolean));
+    STYLES.forEach(([c, name]) => {
+      const b = btn(name, () => { has.has(c) ? has.delete(c) : has.add(c); o.cls = [...has].join(' '); renderTerm(); inspect(); save(); });
+      b.setAttribute('aria-pressed', String(has.has(c)));
+      st.append(b);
+    });
+    box.append(st);
+    const r = h('div', 'frow');
+    r.append(field('Spaces before', 'f-sp', 'number', o.sp, v => { o.sp = clamp(v, 0, 12); }),
+             field('Min width (cols)', 'f-w', 'number', o.w, v => { o.w = clamp(v, 0, 40); }));
+    box.append(r);
+  }
+  if (m.level === 'line') {
+    const role = rowRole(o, m.blk);
+    if (role) box.append(h('p', 'hint', roleText(role)));
+  }
+  if (m.level === 'line') box.append(h('p', 'hint', o.items.length + (o.items.length === 1 ? ' element.' : ' elements.') + ' Drag it by the ⠿ handle or by empty space in the line.'));
+  if (m.level === 'block') {
+    if (BLOCK_CAT.has(o.key)) box.append(h('p', 'hint', 'Built-in block: the mods fill its rows with live data. Any badge shows the live row count.'));
+    box.append(field('Title', 'f-title', 'text', o.title, v => { o.title = v; }),
+               field('Badge', 'f-badge', 'text', o.badge, v => { o.badge = v; }));
+  }
+  const acts = h('div', 'acts');
+  acts.append(btn(parked ? 'Delete for good' : 'Park', () => { park(S.sel); }, parked ? 'warn' : ''));
+  if (m.level === 'line' && !parked) acts.append(btn('Add empty line below', () => {
+    const a = conts[m.cid].arr, l = L('line', []); a.splice(a.indexOf(o) + 1, 0, l); S.sel = l.id; change();
+  }));
+  box.append(acts);
+}
+function park(id) {
+  const m = meta[id]; if (!m) return;
+  const src = conts[m.cid].arr; src.splice(src.indexOf(m.obj), 1);
+  if (m.cid.startsWith('p-')) S.sel = null;
+  else S.layout.parked[{ el: 'els', line: 'lines', block: 'blocks' }[m.level]].push(m.obj);
+  change();
+}
+function nudge(d) {
+  const m = meta[S.sel]; if (!m) return;
+  const a = conts[m.cid].arr, i = a.indexOf(m.obj), j = i + d;
+  if (j < 0 || j >= a.length) return;
+  [a[i], a[j]] = [a[j], a[i]];
+  change(); focusSel();
+}
+
+/* Drag and drop with pointer events (mouse, pen and touch) */
+const ghosts = $('#ghosts'), marker = $('#marker');
+let D = null;
+document.addEventListener('pointerdown', e => {
+  if (S.mode !== 'edit' || e.button !== 0) return;
+  const root = e.target.closest('[data-dnd]'); if (!root) return;
+  if (e.target.closest('button, input, textarea, .ph')) return;
+  const g = e.target.closest('[data-grab]');
+  const node = (g || e.target).closest('[data-level]');
+  if (!node) { if (root.id === 'term' || root.id === 'tray') select(null); return; }
+  D = { node, id: node.dataset.id, lib: node.dataset.lib, level: node.dataset.level, x0: e.clientX, y0: e.clientY, pid: e.pointerId, on: false, tgt: null };
+});
+addEventListener('pointermove', e => {
+  if (!D) return;
+  if (!D.on) { if (Math.hypot(e.clientX - D.x0, e.clientY - D.y0) < 5) return; begin(e); }
+  e.preventDefault();
+  D.gh.style.transform = `translate(${e.clientX - D.dx}px, ${e.clientY - D.dy}px)`;
+  target(e.clientX, e.clientY);
+}, { passive: false });
+addEventListener('pointerup', () => {
+  if (!D) return;
+  const d = D; end();
+  if (!d.on) { if (d.lib) insertNear(LIBMAP[d.lib].make(), d.level); else select(d.id); return; }
+  if (d.tgt) drop(d);
+  else if (!d.lib && meta[d.id] && !meta[d.id].cid.startsWith('p-')) { S.sel = d.id; park(d.id); }
+});
+addEventListener('pointercancel', () => { if (D) end(); });
+
+function begin(e) {
+  D.on = true;
+  if (!D.lib) select(D.id);
+  try { D.node.setPointerCapture(D.pid); } catch (_) {}
+  const r = D.node.getBoundingClientRect();
+  D.dx = Math.min(e.clientX - r.left, 40); D.dy = Math.min(e.clientY - r.top, 20);
+  const gh = D.node.cloneNode(true);
+  gh.classList.remove('sel', 'libitem'); gh.classList.add('ghost');
+  [gh, ...gh.querySelectorAll('[data-id],[data-accept]')].forEach(n => { n.removeAttribute('data-id'); n.removeAttribute('data-accept'); n.classList.remove('sel'); });
+  if (D.level !== 'el') gh.style.width = Math.min(r.width, 560) + 'px';
+  ghosts.append(gh); D.gh = gh;
+  if (!D.lib) D.node.classList.add('dragging');
+  document.body.classList.add('is-dragging');
+}
+function end() {
+  if (D && D.gh) D.gh.remove();
+  if (D) { D.node.classList.remove('dragging'); try { D.node.releasePointerCapture(D.pid); } catch (_) {} }
+  document.body.classList.remove('is-dragging');
+  document.querySelectorAll('.drop-on').forEach(n => n.classList.remove('drop-on'));
+  marker.style.display = 'none';
+  D = null;
+}
+function nearest(zone, lv, x, y) {
+  let best = null, bd = Infinity;
+  zone.querySelectorAll(`[data-accept="${lv}"]`).forEach(c => {
+    if (D.node.contains(c)) return;
+    const r = c.getBoundingClientRect();
+    const dx = Math.max(r.left - x, 0, x - r.right), dy = Math.max(r.top - y, 0, y - r.bottom);
+    const d = dx * dx + dy * dy * 4;
+    if (d < bd) { bd = d; best = c; }
+  });
+  return best;
+}
+function target(x, y) {
+  const lv = D.level, hit = document.elementFromPoint(x, y);
+  let c = hit && hit.closest(`[data-accept="${lv}"]`);
+  if (c && D.node.contains(c)) c = null;
+  if (!c && hit) { const z = hit.closest('[data-zone]'); if (z) c = nearest(z, lv, x, y); }
+  document.querySelectorAll('.drop-on').forEach(n => n.classList.remove('drop-on'));
+  const parks = !c && !D.lib && meta[D.id] && !meta[D.id].cid.startsWith('p-');
+  D.gh.classList.toggle('to-park', parks);
+  D.gh.classList.toggle('to-nowhere', !c && !parks);
+  if (!c) { D.tgt = null; marker.style.display = 'none'; return; }
+  c.classList.add('drop-on');
+  const cid = c.dataset.cid, axis = conts[cid].axis;
+  const kids = [...c.children].filter(k => k.dataset.level === lv && k !== D.node);
+  let i = kids.length;
+  for (let k = 0; k < kids.length; k++) {
+    const r = kids[k].getBoundingClientRect();
+    const before = axis === 'x' ? (y < r.top || (y <= r.bottom && x < r.left + r.width / 2)) : y < r.top + r.height / 2;
+    if (before) { i = k; break; }
+  }
+  D.tgt = { cid, before: kids[i] ? kids[i].dataset.id : null };
+  place(c, kids, i, axis);
+}
+function place(c, kids, i, axis) {
+  const s = marker.style, cr = c.getBoundingClientRect();
+  s.display = 'block';
+  if (axis === 'x') {
+    let r, x;
+    if (!kids.length) { r = cr; x = cr.left; }
+    else if (i < kids.length) { r = kids[i].getBoundingClientRect(); x = r.left - 3; }
+    else { r = kids[kids.length - 1].getBoundingClientRect(); x = r.right + 1; }
+    Object.assign(s, { left: x + 'px', top: r.top + 'px', width: '2px', height: Math.max(r.height, 16) + 'px' });
+  } else {
+    let y;
+    if (!kids.length) y = cr.top + 2;
+    else if (i < kids.length) y = kids[i].getBoundingClientRect().top - 2;
+    else y = kids[kids.length - 1].getBoundingClientRect().bottom + 1;
+    Object.assign(s, { left: cr.left + 'px', top: y + 'px', width: Math.max(cr.width, 40) + 'px', height: '2px' });
+  }
+}
+function drop(d) {
+  let obj;
+  if (d.lib) obj = LIBMAP[d.lib].make();
+  else {
+    const m = meta[d.id]; if (!m) return;
+    const src = conts[m.cid].arr; src.splice(src.indexOf(m.obj), 1); obj = m.obj;
+  }
+  const dst = conts[d.tgt.cid].arr;
+  let i = d.tgt.before ? dst.findIndex(o => o.id === d.tgt.before) : -1;
+  if (i < 0) i = dst.length;
+  dst.splice(i, 0, obj);
+  S.sel = obj.id; change();
+}
+
+/* Keyboard, paste, double-click */
+const inField = t => t && t.closest && t.closest('input, textarea');
+document.addEventListener('keydown', e => {
+  if (inField(e.target) || S.mode !== 'edit') return;
+  const lib = e.target.closest && e.target.closest('[data-lib]');
+  if (lib && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); insertNear(LIBMAP[lib.dataset.lib].make(), lib.dataset.level); return; }
+  if (!S.sel) return;
+  if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); park(S.sel); focusSel(); }
+  else if (e.key === 'Escape') select(null);
+  else if (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowUp')) { e.preventDefault(); nudge(-1); }
+  else if (e.altKey && (e.key === 'ArrowRight' || e.key === 'ArrowDown')) { e.preventDefault(); nudge(1); }
+});
+document.addEventListener('paste', e => {
+  if (inField(e.target) || S.mode !== 'edit') return;
+  const text = (e.clipboardData && e.clipboardData.getData('text/plain') || '').replace(/\s+/g, ' ').trim();
+  if (!text) return;
+  e.preventDefault();
+  insertNear(E('text', text), 'el');
+});
+document.addEventListener('dblclick', e => {
+  if (S.mode !== 'edit') return;
+  const n = e.target.closest && e.target.closest('.el[data-id]');
+  if (!n) return;
+  select(n.dataset.id);
+  const f = $('#f-text'); if (f) { f.focus(); f.select(); }
+});
+document.addEventListener('focusin', e => {
+  const n = e.target.closest && e.target.closest('[data-level]');
+  if (n && n === e.target && n.dataset.id && S.mode === 'edit' && n.dataset.id !== S.sel) select(n.dataset.id);
+});
+
+/* Toolbar */
+function setMode(m) {
+  S.mode = m;
+  $('#term').classList.toggle('edit', m === 'edit');
+  $('#tray').hidden = m !== 'edit';
+  $('#lib').hidden = m !== 'edit';
+  $('#m-edit').setAttribute('aria-pressed', String(m === 'edit'));
+  $('#m-prev').setAttribute('aria-pressed', String(m !== 'edit'));
+  if (m !== 'edit') select(null);
+}
+$('#m-edit').addEventListener('click', () => setMode('edit'));
+$('#m-prev').addEventListener('click', () => setMode('preview'));
+let resetArmed = null;
+$('#reset').addEventListener('click', () => {
+  const b = $('#reset');
+  if (!resetArmed) {
+    b.textContent = 'Click again to reset'; b.classList.add('warn');
+    resetArmed = setTimeout(() => { resetArmed = null; b.textContent = 'Reset layout'; b.classList.remove('warn'); }, 3000);
+    return;
+  }
+  clearTimeout(resetArmed); resetArmed = null; b.textContent = 'Reset layout'; b.classList.remove('warn');
+  try { S.layout = defaults(); S.sel = null; change(); } catch (err) { fatal(err); }
+});
+$('#copy').addEventListener('click', () => {
+  const b = $('#copy'), text = $('#json').value;
+  const say = t => { b.textContent = t; setTimeout(() => { b.textContent = 'Copy layout JSON'; }, 1800); };
+  const manual = () => { $('#jsonbox').open = true; $('#json').focus(); $('#json').select(); say('Press Cmd+C to copy'); };
+  try { navigator.clipboard.writeText(text).then(() => say('Copied'), manual); } catch (_) { manual(); }
+});
+$('#download').addEventListener('click', () => {
+  const a = h('a'); a.href = URL.createObjectURL(new Blob([$('#json').value + '\n'], { type: 'application/json' })); a.download = 'terminal-layout.json';
+  document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+});
+$('#import').addEventListener('click', () => { $('#importbox').open = true; $('#imp').focus(); });
+$('#imp-load').addEventListener('click', () => importText($('#imp').value));
+$('#imp-file').addEventListener('change', ev => {
+  const f = ev.target.files && ev.target.files[0]; if (!f) return;
+  const rd = new FileReader();
+  rd.onload = () => { $('#imp').value = String(rd.result); importText(String(rd.result)); };
+  rd.onerror = () => { const msg = $('#imp-msg'); msg.className = 'bad'; msg.textContent = 'The file could not be read.'; };
+  rd.readAsText(f);
+  ev.target.value = '';
+});
+
+function fatal(err) {
+  const p = h('p', 'warnmsg', 'The editor could not start: ' + err.message);
+  p.setAttribute('role', 'alert'); $('.app').prepend(p);
+}
+try { buildLibrary(); S.layout = load(); change(); } catch (err) { fatal(err); }
+</script>
+</body>
+</html>

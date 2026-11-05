@@ -1,0 +1,6 @@
+{
+  "name": "cockpit",
+  "version": "0.5.0",
+  "description": "Git guard for shared worktrees, a summary line under each answer drawn from the turnSummary lines of ~/.claude/terminal-layout.json, folded passing test output, macOS alerts when the session needs you or its work is done, and /mods-usage",
+  "author": { "name": "dgtlwrks" }
+}

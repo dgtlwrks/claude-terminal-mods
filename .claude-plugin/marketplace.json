@@ -1,0 +1,19 @@
+{
+  "name": "claude-terminal-mods",
+  "description": "Mods for the Claude Code terminal that draw one layout file, ~/.claude/terminal-layout.json, made in a drag-and-drop editor",
+  "owner": {
+    "name": "dgtlwrks"
+  },
+  "plugins": [
+    {
+      "name": "checklist",
+      "source": "./checklist",
+      "description": "A task checklist pane beside the chat, with a board of every session on this Mac and this session's subagents. Draws the sidebar and bandAbovePrompt blocks of ~/.claude/terminal-layout.json"
+    },
+    {
+      "name": "cockpit",
+      "source": "./cockpit",
+      "description": "Git guard for shared worktrees, a summary line under each answer drawn from the turnSummary lines of ~/.claude/terminal-layout.json, folded passing test output, macOS alerts when the session needs you or its work is done, and /mods-usage"
+    }
+  ]
+}
