@@ -11,19 +11,11 @@ type Heredoc = { end: string, dash: boolean }
 const GLOBAL_OPTS_WITH_VALUE = new Set(['-C', '-c', '--git-dir', '--work-tree', '--namespace'])
 const SHELL_WORDS = new Set(['if', 'then', 'else', 'elif', 'do', 'while', 'until', '!'])
 // Wrappers: their own -x options and VAR=value words come before the command (time takes -p)
-// Commands that run the command after them. timeout also takes a duration first.
+// Commands that run the command after them, past options and values of their own (a user, a duration, a count).
 const WRAPPERS = new Set([
   'sudo', 'doas', 'env', 'command', 'exec', 'nohup', 'nice', 'builtin', 'time', 'noglob', 'nocorrect',
   'timeout', 'gtimeout', 'stdbuf', 'caffeinate', 'xargs', 'watch', 'chronic',
 ])
-const WRAPPER_OPTS_WITH_VALUE = new Set([
-  'sudo -u', 'sudo -g', 'sudo -C', 'sudo -D', 'sudo -p', 'sudo -R', 'sudo -r', 'sudo -T', 'sudo -t', 'sudo -U',
-  'env -u', 'env -C', 'nice -n', 'exec -a', 'doas -u', 'doas -C',
-  'timeout -s', 'timeout -k', 'timeout --signal', 'timeout --kill-after', 'gtimeout -s', 'gtimeout -k',
-  'stdbuf -i', 'stdbuf -o', 'stdbuf -e', 'caffeinate -t', 'caffeinate -w', 'watch -n', 'watch --interval',
-  'xargs -I', 'xargs -n', 'xargs -P', 'xargs -L', 'xargs -s', 'xargs -E', 'xargs -d', 'xargs -a',
-])
-const DURATION = /^\d+(\.\d+)?[smhd]?$/
 const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*\+?=/
 const WIDE_PATHS = new Set(['.', './', '..', '../', ':/', '*'])
 
@@ -96,7 +88,10 @@ export function commands(text: string): string[][] {
         return s
       }
       if (c === '\\') {
-        if (text.charAt(i + 1) !== '\n') s += text.charAt(i + 1)
+        // In double quotes a backslash escapes only $ ` " \ and a newline; before anything else it stays, as in
+        // the shell (env -S then reads "git\_reset" as git reset).
+        const next = text.charAt(i + 1)
+        if (next !== '\n') s += '$`"\\'.includes(next) ? next : `\\${next}`
         i += 2
       } else if (c === '$' && text.charAt(i + 1) === '(') {
         const start = i
@@ -216,28 +211,34 @@ export function commands(text: string): string[][] {
   return out
 }
 
-// The words of a command from `git` on, or null when the command is not git.
-function gitWords(words: string[]): string[] | null {
-  let wrapper = ''
+// macOS file systems ignore case, so GIT and /usr/bin/Git run git too.
+const isGit = (w: string) => {
+  const n = w.toLowerCase()
+  return n === 'git' || n.endsWith('/git')
+}
+
+// The command's words from each `git` on: one list for a git command, none when it is not git.
+// After a wrapper, rather than knowing each one's options, every word that is git counts: alone, glued to an
+// option (env -Sgit), or inside a string the wrapper splits (env -S 'git add .'). sudo -u git git ... gives two.
+function gitWords(words: string[]): string[][] {
   let i = 0
-  while (i < words.length) {
-    const w = words[i] ?? ''
-    if (WRAPPERS.has(w)) wrapper = w
-    else if (wrapper === 'env' && /^(-S|--split-string)/.test(w)) {
-      // env -S 'git reset --hard' splits its value into the command it runs.
-      const own = w === '-S' || w === '--split-string'
-      const value = own ? (words[i + 1] ?? '') : w.replace(/^(-S|--split-string=)/, '')
-      return gitWords([...value.split(/\s+/).filter(Boolean), ...words.slice(own ? i + 2 : i + 1)])
-    } else if ((wrapper === 'timeout' || wrapper === 'gtimeout') && DURATION.test(w)) {
-      // the duration before the command
-    } else if (wrapper && w.startsWith('-')) {
-      if (WRAPPER_OPTS_WITH_VALUE.has(`${wrapper} ${w}`)) i++
-    } else if (!ASSIGNMENT.test(w) && !SHELL_WORDS.has(w)) break
-    i++
+  while (i < words.length && (ASSIGNMENT.test(words[i] ?? '') || SHELL_WORDS.has(words[i] ?? ''))) i++
+  if (isGit(words[i] ?? '')) return [words.slice(i)]
+  if (!WRAPPERS.has(words[i] ?? '')) return []
+  const found: string[][] = []
+  for (let j = i + 1; j < words.length; j++) {
+    // Split the word the way env -S does (quotes dropped, \_ \t \n as spaces) and take every git in it; a git that
+    // is only mentioned inside another command's argument is refused too, which errs on the safe side.
+    const text = (words[j] ?? '').replace(/\\[_tn]/g, ' ').replace(/['"\\]/g, '')
+    const parts = text
+      .split(/\s+/)
+      .filter(Boolean)
+      .map(p => p.replace(/^-[A-Za-z]*S/, '').replace(/^--[A-Za-z-]+=/, ''))
+    parts.forEach((p, k) => {
+      if (isGit(p)) found.push([p, ...parts.slice(k + 1), ...words.slice(j + 1)])
+    })
   }
-  // macOS file systems ignore case, so GIT and /usr/bin/Git run git too.
-  const name = (words[i] ?? '').toLowerCase()
-  return name === 'git' || name.endsWith('/git') ? words.slice(i) : null
+  return found
 }
 
 // A short-option group (one -, letters only) holding `letter` before any of `stops`, the options that
@@ -324,9 +325,10 @@ function why(words: string[]): string | null {
 export function refusal(command: string): string | null {
   try {
     for (const words of commands(command)) {
-      const git = gitWords(words)
-      const reason = git && why(git)
-      if (git && reason) return `guard: "${git.join(' ')}" blocked: ${reason}`
+      for (const git of gitWords(words)) {
+        const reason = why(git)
+        if (reason) return `guard: "${git.join(' ')}" blocked: ${reason}`
+      }
     }
     return null
   } catch {

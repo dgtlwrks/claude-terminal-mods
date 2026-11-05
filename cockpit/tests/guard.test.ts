@@ -220,3 +220,33 @@ describe('guard: wrappers that run git after them', () => {
   const allowed = ['timeout 5 git status', 'xargs echo', 'env -S "echo hi"', 'caffeinate -i make']
   for (const c of allowed) test(`allows: ${c}`, () => expect(refusal(c)).toBe(null))
 })
+
+describe('guard: git behind a wrapper, whatever its options', () => {
+  const blocked = [
+    'timeout .5 git reset --hard',
+    'timeout 1e3 git reset --hard',
+    'gtimeout --signal KILL 5 git reset --hard',
+    'gtimeout --kill-after 3 5 git push --force',
+    'xargs --max-args 1 git add .',
+    'env -iS "git reset --hard"',
+    'env -Sgit reset --hard',
+    'env --split=\'git add .\'',
+    'env -u HOME -S "git add ."',
+    'sudo -u git git reset --hard',
+    'nice -n 10 git push --force',
+  ]
+  for (const c of blocked) test(`refuses: ${c}`, () => expect(refusal(c)).not.toBe(null))
+  const allowed = ['sudo -u git ls', 'timeout 5 make', 'env -S "make test"', 'echo git reset --hard']
+  for (const c of allowed) test(`allows: ${c}`, () => expect(refusal(c)).toBe(null))
+})
+
+describe('guard: env -S strings split the way env splits them', () => {
+  const blocked = [
+    'env -S " git reset --hard"',
+    `env -S "'git' reset --hard"`,
+    'env -S "git\\_reset\\_--hard"',
+    'env -S "-i git add ."',
+    'env --split-string=" git push --force"',
+  ]
+  for (const c of blocked) test(`refuses: ${c}`, () => expect(refusal(c)).not.toBe(null))
+})
