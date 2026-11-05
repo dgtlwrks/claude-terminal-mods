@@ -11,11 +11,19 @@ type Heredoc = { end: string, dash: boolean }
 const GLOBAL_OPTS_WITH_VALUE = new Set(['-C', '-c', '--git-dir', '--work-tree', '--namespace'])
 const SHELL_WORDS = new Set(['if', 'then', 'else', 'elif', 'do', 'while', 'until', '!'])
 // Wrappers: their own -x options and VAR=value words come before the command (time takes -p)
-const WRAPPERS = new Set(['sudo', 'env', 'command', 'exec', 'nohup', 'nice', 'builtin', 'time'])
+// Commands that run the command after them. timeout also takes a duration first.
+const WRAPPERS = new Set([
+  'sudo', 'doas', 'env', 'command', 'exec', 'nohup', 'nice', 'builtin', 'time', 'noglob', 'nocorrect',
+  'timeout', 'gtimeout', 'stdbuf', 'caffeinate', 'xargs', 'watch', 'chronic',
+])
 const WRAPPER_OPTS_WITH_VALUE = new Set([
   'sudo -u', 'sudo -g', 'sudo -C', 'sudo -D', 'sudo -p', 'sudo -R', 'sudo -r', 'sudo -T', 'sudo -t', 'sudo -U',
-  'env -u', 'env -C', 'nice -n', 'exec -a',
+  'env -u', 'env -C', 'nice -n', 'exec -a', 'doas -u', 'doas -C',
+  'timeout -s', 'timeout -k', 'timeout --signal', 'timeout --kill-after', 'gtimeout -s', 'gtimeout -k',
+  'stdbuf -i', 'stdbuf -o', 'stdbuf -e', 'caffeinate -t', 'caffeinate -w', 'watch -n', 'watch --interval',
+  'xargs -I', 'xargs -n', 'xargs -P', 'xargs -L', 'xargs -s', 'xargs -E', 'xargs -d', 'xargs -a',
 ])
+const DURATION = /^\d+(\.\d+)?[smhd]?$/
 const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*\+?=/
 const WIDE_PATHS = new Set(['.', './', '..', '../', ':/', '*'])
 
@@ -215,7 +223,14 @@ function gitWords(words: string[]): string[] | null {
   while (i < words.length) {
     const w = words[i] ?? ''
     if (WRAPPERS.has(w)) wrapper = w
-    else if (wrapper && w.startsWith('-')) {
+    else if (wrapper === 'env' && /^(-S|--split-string)/.test(w)) {
+      // env -S 'git reset --hard' splits its value into the command it runs.
+      const own = w === '-S' || w === '--split-string'
+      const value = own ? (words[i + 1] ?? '') : w.replace(/^(-S|--split-string=)/, '')
+      return gitWords([...value.split(/\s+/).filter(Boolean), ...words.slice(own ? i + 2 : i + 1)])
+    } else if ((wrapper === 'timeout' || wrapper === 'gtimeout') && DURATION.test(w)) {
+      // the duration before the command
+    } else if (wrapper && w.startsWith('-')) {
       if (WRAPPER_OPTS_WITH_VALUE.has(`${wrapper} ${w}`)) i++
     } else if (!ASSIGNMENT.test(w) && !SHELL_WORDS.has(w)) break
     i++
@@ -315,6 +330,6 @@ export function refusal(command: string): string | null {
     }
     return null
   } catch {
-    return /\bgit\b/.test(command) ? UNCHECKED : null
+    return /\bgit\b/i.test(command) ? UNCHECKED : null
   }
 }

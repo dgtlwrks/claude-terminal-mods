@@ -199,3 +199,24 @@ describe('guard: spellings git accepts for the same destructive command', () => 
   const allowed = ['git reset --soft HEAD~1', 'git push --follow-tags origin main', 'git commit --amend -m x', 'git switch --detach main', 'GIT status']
   for (const c of allowed) test(`allows: ${c}`, () => expect(refusal(c)).toBe(null))
 })
+
+describe('guard: wrappers that run git after them', () => {
+  const blocked = [
+    'timeout 5 git reset --hard',
+    'timeout -s KILL 10s git reset --hard',
+    'gtimeout 1m git push --force',
+    'doas git reset --hard',
+    'doas -u me git reset --hard',
+    'xargs git reset --hard',
+    'xargs -n 1 git add .',
+    'caffeinate -i git push --force',
+    'stdbuf -oL git reset --hard',
+    'watch -n 1 git reset --hard',
+    'env -S "git reset --hard"',
+    "env --split-string='git add .'",
+    'noglob git add .',
+  ]
+  for (const c of blocked) test(`refuses: ${c}`, () => expect(refusal(c)).not.toBe(null))
+  const allowed = ['timeout 5 git status', 'xargs echo', 'env -S "echo hi"', 'caffeinate -i make']
+  for (const c of allowed) test(`allows: ${c}`, () => expect(refusal(c)).toBe(null))
+})
